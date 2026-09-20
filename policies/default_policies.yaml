@@ -1,0 +1,172 @@
+# =============================================================================
+# AgentAudit — Default Policy Definitions
+# =============================================================================
+#
+# This file defines the rules that govern AI agent behavior. Each rule
+# specifies which tool it applies to, what condition triggers it, and
+# what action to take (allow, block, or flag_for_review).
+#
+# Two tiers of rules:
+#   hard_rule  — Deterministic checks. Fast, zero false negatives on
+#                explicitly defined conditions. Sub-millisecond latency.
+#   semantic   — LLM-as-judge evaluation. Catches subtle violations that
+#                hard rules can't anticipate. Adds latency (~200-500ms).
+#
+# To add a new rule, append an entry below following the same structure.
+# =============================================================================
+
+policies:
+
+  # ---------------------------------------------------------------------------
+  # HARD RULES — Deterministic checks
+  # ---------------------------------------------------------------------------
+
+  - name: no_external_email
+    description: "Emails to domains outside the trusted list require human review"
+    applies_to: send_email
+    tier: hard_rule
+    condition:
+      type: domain_not_in_list
+      field: to
+      list_name: trusted_domains
+    action: FLAG_FOR_REVIEW
+
+  - name: spend_cap_per_transaction
+    description: "No single transaction above $200"
+    applies_to: spend_money
+    tier: hard_rule
+    condition:
+      type: numeric_gt
+      field: amount
+      threshold: 200
+    action: BLOCK
+
+  - name: cumulative_spend_cap
+    description: "Total session spend must not exceed $500"
+    applies_to: spend_money
+    tier: hard_rule
+    condition:
+      type: cumulative_gt
+      field: amount
+      session_field: cumulative_session_spend
+      threshold: 500
+    action: BLOCK
+
+  - name: no_sensitive_file_deletion
+    description: "Cannot delete files in protected system paths"
+    applies_to: delete_file
+    tier: hard_rule
+    condition:
+      type: path_starts_with
+      field: file_path
+      prefixes:
+        - "/etc"
+        - "/var/secrets"
+        - "/home/admin"
+        - "C:\\Windows\\System32"
+    action: BLOCK
+
+  - name: no_password_in_email
+    description: "Emails must not contain passwords or credentials"
+    applies_to: send_email
+    tier: hard_rule
+    condition:
+      type: regex_match
+      field: body
+      pattern: "(?i)(password|passwd|secret.?key|api.?key|credential|ssn|social.?security)\\s*(is|was|:=?|=)\\s*\\S+"
+    action: BLOCK
+
+  - name: no_dangerous_file_extensions
+    description: "Cannot delete executable or system files"
+    applies_to: delete_file
+    tier: hard_rule
+    condition:
+      type: regex_match
+      field: file_path
+      pattern: "\\.(exe|dll|sys|bat|cmd|ps1|sh)$"
+    action: BLOCK
+
+  - name: ssrf_protection
+    description: "Web searches or network requests must not target internal or cloud metadata services"
+    applies_to: web_search
+    tier: hard_rule
+    condition:
+      type: private_ip_denied
+      field: query
+    action: BLOCK
+
+  - name: spend_rate_limit
+    description: "Maximum 5 financial transactions per 60 second window to prevent runaway loops"
+    applies_to: spend_money
+    tier: hard_rule
+    condition:
+      type: rate_limit_exceeded
+      field: spend_money
+      max_calls: 5
+      window_seconds: 60
+    action: BLOCK
+
+  - name: sensitive_slack_content
+    description: "Slack messages cannot contain secret tokens, private keys, or credential dumps"
+    applies_to: send_slack_message
+    tier: hard_rule
+    condition:
+      type: contains_any
+      field: message
+      items:
+        - "BEGIN PRIVATE KEY"
+        - "gsk_"
+        - "sk-"
+        - "aws_secret_access_key"
+    action: BLOCK
+
+
+  # ---------------------------------------------------------------------------
+  # SEMANTIC RULES — LLM-as-judge evaluation
+  # ---------------------------------------------------------------------------
+
+  - name: appropriate_email_tone
+    description: "Outgoing customer-facing emails must maintain professional tone"
+    applies_to: send_email
+    tier: semantic
+    policy_intent: >
+      Customer-facing communications must be professional, empathetic, and
+      respectful. The email must NOT be aggressive, dismissive, sarcastic,
+      threatening, or condescending. It should not make promises the company
+      cannot keep, disclose internal pricing/strategy, or blame the customer.
+      A polite, helpful, and solution-oriented tone is required.
+    action: FLAG_FOR_REVIEW
+
+  - name: safe_search_queries
+    description: "Search queries must not seek harmful or illegal content"
+    applies_to: web_search
+    tier: semantic
+    policy_intent: >
+      Search queries must not seek instructions for illegal activities,
+      methods to harm people, ways to bypass security systems, access
+      restricted information, or any content that would be inappropriate
+      for a professional business context. Queries should be relevant
+      to legitimate business tasks.
+    action: BLOCK
+
+  - name: appropriate_slack_messages
+    description: "Slack messages must be professional and not leak sensitive info"
+    applies_to: send_slack_message
+    tier: semantic
+    policy_intent: >
+      Internal Slack messages must be professional and must not contain
+      customer personal data (PII), share credentials, or include content
+      that could be considered harassment. Messages should be appropriate
+      for a professional workplace.
+    action: FLAG_FOR_REVIEW
+
+
+# ---------------------------------------------------------------------------
+# Reference lists used by hard rules
+# ---------------------------------------------------------------------------
+
+trusted_domains:
+  - "company.com"
+  - "partner.org"
+  - "internal.dev"
+  - "acme-corp.com"

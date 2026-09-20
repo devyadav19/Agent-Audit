@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments & secrets (NEVER commit live secrets)
+.env
+.env.local
+!.env.example
+.venv
+venv/
+env/
+
+# Databases
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+agentaudit.db
+eval_temp.db
+
+# Frontend dependencies and build outputs
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.package-lock.json
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
